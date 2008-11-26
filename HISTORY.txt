@@ -1,0 +1,11 @@
+# Original Author:: Martin Ankerl martin.ankerl gmail
+# Homepage:: http://martin.ankerl.org/
+#
+# Modifications by:: Greg Weber greg gregweber.info
+# Homepage:: http://thoughtfolder.com
+#  * ensure a root directory for the archive (no pollution)
+#  * changed %FILE% substitution to lambda evaluations
+#  * changed user data from regular expressions to strings (will be compiled to regex)
+#  * auto-detect the user data pattern type and make ordering flexible
+#  * added command line switches (for auto-completion functions)
+#  * proper shell escaping
