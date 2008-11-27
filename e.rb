@@ -176,7 +176,7 @@ def run *command
   res = IO.popen('-') {|io| io ? io.read : exec(command.shift, *command)}
   return <<-EOS if $?.exitstatus != 0
 
-exit code: #{s}
+exit code: #{$?.exitstatus}
 command result:
 #{res}
 
