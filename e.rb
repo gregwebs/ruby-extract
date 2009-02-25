@@ -26,7 +26,7 @@ rules = [
 [ 'MS CAB-Installer', '.cab', fn{|f| "cabextract #{f}"} ],
 [ '^ACE ',                    fn{|f| "unace -e #{f}"} ],
 [ '^PPMD archive',            fn{|f| "ppmd -d #{f}"} ],
-[ '.tar.lzma|.tlz',           fn{|f| "lzma -d -si -so < #{f} |tar -xv"} ],
+[ '.tar.lzma|.tlz',           fn{|f| [:system, "lzma -d -si -so < #{f} |tar -xv"]} ],
 [ '.rz',                      fn{|f| "rzip -d -k -v #{f}"} ],
 [ '.dar',                     fn{|f| "dar -v -x #{f}"} ],
 [ '.uha',                     fn{|f| "wine uharc x #{f}"} ],
@@ -35,7 +35,7 @@ rules = [
 
 # recognize tarred archives
 [ '^lzop ', '.lzo|.lzop|.zo', fn {|f|
-  if f =~ /(?:\.tar\.lzo|\.tzo|\.tar\.lzop)$/ then "lzop -c -d #{f} |tar -xv"
+  if f =~ /(?:\.tar\.lzo|\.tzo|\.tar\.lzop)$/ then [:system, "lzop -c -d #{f} | tar -xv"]
   else                                             "lzop -x -f #{f}"
   end }
 ],
@@ -47,7 +47,7 @@ rules = [
 # gzip by default removes the file, must use -c inputFile > outputFile
 [ 'gzip ', '.gz', fn {|f|
   if f =~ /(?:\.tar\.gz|\.tgz)$/ then "tar -xzvf #{f}"
-  else "gunzip -c #{f} > #{f.dup.sub!(/\.gz$/, '') || (f + '.unzipped')}" 
+  else [:system, "gunzip -c #{f} > #{f.dup.sub!(/\.gz$/, '') || (f + '.unzipped')}"]
   end }
 ]
 ]
@@ -173,7 +173,8 @@ end
 # this is like backticks, but the command will be shell escaped
 def run *command
   command = command.flatten.map {|str| str.split(/\s+/)}.flatten
-  res = IO.popen('-') {|io| io ? io.read : exec(command.shift, *command)}
+  res = nil
+  IO.popen('-') {|io| io ? io.read : res = exec(command.shift, *command)}
   return <<-EOS if $?.exitstatus != 0
 
 exit code: #{$?.exitstatus}
@@ -188,9 +189,12 @@ EOS
 end
 
 def match_and_extract( filename, matcher, rule_set )
-  rule_set.find { |regex, command|
+  rule_set.find { |regex, command_proc|
     if( matcher.match( regex ) )
-      res = run( command.call( filename ) )
+      runner = :run
+      command = command_proc.call( filename )
+      runner, command = command if Array === command
+      res = send(runner, command)
       if $?.exitstatus == 0
         mv_no_pollute( filename ) || true # stop the find command for sure
       else
