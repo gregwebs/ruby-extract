@@ -242,7 +242,7 @@ at_exit do
   unless errors.empty?
     puts("\nERROR: unsuccessful extractions:\n\n" <<
     errors.map do |fileName, error|
-      "#{fileName}\n  ERROR:    #{error}\n  filetype: #{`file #{fileName}`}"
+      "#{fileName}\n  ERROR:    #{error}\n  filetype: #{`file -b '#{fileName}'`}"
     end.join("\n") )
     exit!(1)
   end
