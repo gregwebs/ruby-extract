@@ -171,8 +171,11 @@ def mv_no_pollute( unpolluting_name="extracted", dest='..' )
 end
 
 # this is like backticks, but the command will be shell escaped
-def run *command
-  command = command.flatten.map {|str| str.split(/\s+/)}.flatten
+def run command, filename
+  command = command.gsub(filename, '%FILE%').
+    map {|str| str.split(/\s+/)}.flatten.
+    map {|s| s == '%FILE%' ? filename : s}
+
   res = nil
   IO.popen('-') {|io| io ? io.read : res = exec(command.shift, *command)}
   return <<-EOS if $?.exitstatus != 0
@@ -194,7 +197,13 @@ def match_and_extract( filename, matcher, rule_set )
       runner = :run
       command = command_proc.call( filename )
       runner, command = command if Array === command
-      res = send(runner, command)
+
+      res = if method(runner).arity == 2
+        send(runner, command, filename)
+      else
+        send(runner, command)
+      end
+
       if $?.exitstatus == 0
         mv_no_pollute( filename ) || true # stop the find command for sure
       else
