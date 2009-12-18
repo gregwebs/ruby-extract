@@ -113,7 +113,7 @@ ARGV.each do |file|
       formats = [0,0,0]
       rules.map! do |rule|
         rule[0] ||= ""; rule[1] ||= ""
-        rule[2] = rule[2].call "FILE"
+        rule[2] = [*(rule[2].call "FILE")].join(' ')
         rule.each_with_index do |s,i|
           formats[i] = s.length if (s.length) > formats[i]
         end
