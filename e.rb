@@ -7,13 +7,13 @@ alias fn lambda
 #################### begin user configuration ####################
 ###
 # filetype, file-extension, extraction command
-rules = [
+$rules = [
 [ '(^Zip archive)|( ZIP )', '.zip|.ZIP', fn{|f| "unzip #{f}"} ],
 #['^RPM', fn{|f| "rpm2cpio < #{f} | cpio -i -d --verbose"} ],
 [ '^RPM',                     fn{|f| "alien -k #{f}"} ],
-[ '^7-zip',          '.7zip', fn{|f| "7z x #{f}"} ],
+#[ '^7-zip',          '.7zip', fn{|f| "7z x #{f}"} ],
 #[ '^7-zip',         '.7zip', fn{|f| "7zr x #{f}"} ],
-#[ '^7-zip',         '.7zip', fn{|f| "7za x #{f}"} ],
+[ '^7-zip',         '.7zip', fn{|f| "7za x #{f}"} ],
 [ 'tar archive',     '.tar',  fn{|f| "tar -xvf #{f}"} ],
 [ '^RAR archive',    '.rar',  fn{|f| "unrar -x -o+ #{f}"} ],
 #[ '^RAR archive',            fn{|f| "rar -e #{f}"} ],
@@ -59,7 +59,7 @@ rules = [
 # make every rule have the same format (let user be flexible) :
 #   filetype pattern, filename pattern, command
 # insert nil in place of nonexistent patterns
-rules.map! do |r|
+$rules.map! do |r|
   case r.size
   when 3
     r[1], r[0] = r[0], r[1] if r[0][0,1] == '.'
@@ -95,35 +95,37 @@ def re_to_text( regexes )
   end
 end
 
-ARGV.each do |file|
-  if !(File.exist?( file ))
-    exit_msg(*
-    case file
-    # accept piped input
-    when '-'
-      ARGV.delete_at( ARGV.index('-') )
-      $stdin.readlines.each {|line| ARGV.push( line.chomp )}
-      retry
+def check_files(files)
+  files.each do |file|
+    if !(File.exist?( file ))
+      exit_msg(*
+      case file
+      # accept piped input
+      when '-'
+        return check_files( $stdin.readlines.map {|line| line.chomp } )
 
-    # s on the end is optional
-    when /^--type/  then [re_to_text( rules.map {|r| r[0]} ), 0]
-    when /^--ext/   then [re_to_text( rules.map {|r| r[1][3..-3] if r[1]} ), 0]
-    when /^--help/  then [help(), 0]
-    when /^--rule/  
-      formats = [0,0,0]
-      rules.map! do |rule|
-        rule[0] ||= ""; rule[1] ||= ""
-        rule[2] = [*(rule[2].call "FILE")].join(' ')
-        rule.each_with_index do |s,i|
-          formats[i] = s.length if (s.length) > formats[i]
-        end
-      end.map! {|r| sprintf "%#{formats[0]}s|%#{formats[1]}s|%#{formats[2]}s", *r}
-      [rules, 0]
-    when /^--?\w*$/ then [help(), 1]
-    else                 ["archive does not exist: #{file}", 1]
-    end)
+      # s on the end is optional
+      when /^--type/  then [re_to_text( $rules.map {|r| r[0]} ), 0]
+      when /^--ext/   then [re_to_text( $rules.map {|r| r[1][3..-3] if r[1]} ), 0]
+      when /^--help/  then [help(), 0]
+      when /^--rule/  
+        formats = [0,0,0]
+        $rules.map! do |rule|
+          rule[0] ||= ""; rule[1] ||= ""
+          rule[2] = [*(rule[2].call "FILE")].join(' ')
+          rule.each_with_index do |s,i|
+            formats[i] = s.length if (s.length) > formats[i]
+          end
+        end.map! {|r| sprintf "%#{formats[0]}s|%#{formats[1]}s|%#{formats[2]}s", *r}
+        [$rules, 0]
+      when /^--?\w*$/ then [help(), 1]
+      else                 ["archive does not exist: #{file}", 1]
+      end)
+    end
   end
+  files
 end
+files = check_files(ARGV)
 ################### END PARSE COMMAND LINE ###############
 
 require 'fileutils'
@@ -172,12 +174,23 @@ end
 
 # this is like backticks, but the command will be shell escaped
 def run command, filename
-  command = command.gsub(filename, '%FILE%').
-    map {|str| str.split(/\s+/)}.flatten.
-    map {|s| s == '%FILE%' ? filename : s}
+  # split command on whitespace. But remove the file- it could have whitespace
+  # this means all commands should not have whitespace- this should hold
+  splitup = []
+  i = -1
+  while maybei = (slice = command[i + 1 .. -1]).index(filename)
+    i = maybei
+    splitup.push command[0...i].split(/\s+/).push(filename)
+    i += filename.length
+    break if i == command.length
+    fail if i > command.length
+  end
+
+  splitup.push slice.split(/\s+/) if i < command.length
+  c = splitup.flatten.compact
 
   res = nil
-  IO.popen('-') {|io| io ? io.read : res = exec(command.shift, *command)}
+  IO.popen('-') {|io| io ? io.read : res = exec(c.shift, *c)}
   return <<-EOS if $?.exitstatus != 0
 
 exit code: #{$?.exitstatus}
@@ -185,7 +198,7 @@ command result:
 #{res}
 
 failure on command:
-#{command.join(' ')}
+#{c.join(' ')}
 EOS
 
   res
@@ -239,9 +252,9 @@ def remove_temp_dir
   end
 end
 
-type_rules = rules.map {|type, name, command|
+type_rules = $rules.map {|type, name, command|
   [Regexp.compile(type), command] if type }.compact
-name_rules = rules.map {|type, name, command|
+name_rules = $rules.map {|type, name, command|
   [Regexp.compile(name), command] if name }.compact
 
 errors = []
@@ -257,7 +270,7 @@ at_exit do
   end
 end
 
-ARGV.each_with_index do |file, i|
+files.each_with_index do |file, i|
   # currently in ./tmp directory
   relative_file = (file[0,1] == '/') ? file : ("../" + file) 
   begin
